@@ -1,0 +1,182 @@
+name: Build APK
+on:
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - name: Create project files
+        run: |
+          mkdir -p www
+          cat > package.json <<'EOF_FILE'
+          {
+            "name": "sideways-scanner",
+            "version": "1.0.0",
+            "private": true,
+            "dependencies": {
+              "@capacitor/android": "^6.0.0",
+              "@capacitor/cli": "^6.0.0",
+              "@capacitor/core": "^6.0.0"
+            }
+          }
+          EOF_FILE
+          cat > capacitor.config.json <<'EOF_FILE'
+          {
+            "appId": "com.example.sidewaysscanner",
+            "appName": "סורק דשדוש",
+            "webDir": "www",
+            "plugins": { "CapacitorHttp": { "enabled": true } }
+          }
+          EOF_FILE
+          cat > www/index.html <<'EOF_FILE'
+          <!DOCTYPE html>
+          <html lang="he" dir="rtl"><head><meta charset="utf-8">
+          <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+          <title>סורק דשדוש</title>
+          <style>
+          :root{--bg:#fff;--fg:#14181f;--mut:#667085;--card:#f3f5f8;--acc:#1d6fe8;--ok:#0a8f4e;--bd:#d9dee6}
+          @media(prefers-color-scheme:dark){:root{--bg:#10141b;--fg:#e8ecf2;--mut:#98a2b3;--card:#1a202a;--acc:#5b9bff;--ok:#38c98a;--bd:#2b3340}}
+          *{box-sizing:border-box}
+          body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.5 system-ui,Arial,sans-serif;padding:calc(14px + env(safe-area-inset-top)) 14px calc(14px + env(safe-area-inset-bottom))}
+          h1{font-size:20px;margin:0 0 10px}
+          .card{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:12px;margin-bottom:12px}
+          .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:6px 0}
+          button{border:1px solid var(--bd);background:var(--bg);color:var(--fg);padding:10px 14px;border-radius:10px;font:inherit}
+          button.on{background:var(--acc);color:#fff;border-color:var(--acc)}
+          button.go{background:var(--ok);color:#fff;border-color:var(--ok);width:100%;font-weight:700;font-size:16px}
+          input[type=number]{width:70px;padding:8px;border-radius:8px;border:1px solid var(--bd);background:var(--bg);color:var(--fg);font:inherit}
+          textarea{width:100%;height:80px;direction:ltr;background:var(--bg);color:var(--fg);border:1px solid var(--bd);border-radius:8px;padding:8px}
+          .mut{color:var(--mut);font-size:13px}
+          .item{display:flex;justify-content:space-between;align-items:center;padding:12px 4px;border-bottom:1px solid var(--bd)}
+          .item b{font-size:16px}.tag{font-size:12px;color:var(--mut)}
+          progress{width:100%}
+          </style></head><body>
+          <h1>סורק דשדוש רוחבי</h1>
+          <div class="card">
+           <div class="mut">מדדים</div><div class="row" id="idx"></div>
+           <div class="row"><button id="upd">עדכן רשימות מניות (ארה״ב)</button><span id="updst" class="mut"></span></div>
+           <details><summary class="mut">עריכת רשימות מניות (סימול Yahoo, מופרד בפסיקים)</summary>
+            <div id="lists"></div></details>
+           <div class="mut">תקופת סריקה (לפני הסריקה)</div>
+           <div class="row"><button id="p3" class="on">3 חודשים</button><button id="p6">חצי שנה</button></div>
+           <div class="row"><span>טווח ±</span><input id="band" type="number" value="15"><span>%</span>
+            <span>מינ׳ ימים</span><input id="minD" type="number" value="10"></div>
+           <div class="row"><span>מחזור עד</span><input id="vr" type="number" value="1.0" step="0.1"><span>× מהממוצע</span>
+            <label><input id="anyv" type="checkbox"> ללא סינון מחזור</label></div>
+           <button class="go" id="scan">משוך נתונים וסרוק</button>
+           <progress id="prog" value="0" max="1" hidden></progress>
+          </div>
+          <div id="status" class="mut"></div>
+          <div class="card" id="res" hidden></div>
+          <script>
+          const IDX=[["TA35","ת״א 35",".TA"],["TA90","ת״א 90",".TA"],["TA125","ת״א 125",".TA"],["NDX","נאסד״ק 100",""],["SPX","S&P 500",""]];
+          // רשימות ברירת מחדל קצרות לדוגמה - יש להשלים בעריכת הרשימות
+          const DEF={TA35:"TEVA.TA,NICE.TA,ICL.TA,LUMI.TA,POLI.TA,DSCT.TA,MZTF.TA,FIBI.TA,ESLT.TA,NVMI.TA",TA90:"",TA125:"",
+          NDX:"AAPL,MSFT,NVDA,AMZN,GOOGL,META,AVGO,TSLA,COST,NFLX",SPX:"JPM,V,XOM,UNH,PG,HD,KO,PEP,WMT,BAC"};
+          const $=id=>document.getElementById(id);
+          let days=63;const sel=new Set(IDX.map(i=>i[0]));
+          const L=k=>localStorage.getItem('list_'+k)??DEF[k];
+          IDX.forEach(([k,n])=>{
+           const b=document.createElement('button');b.textContent=n;b.className='on';
+           b.onclick=()=>{sel.has(k)?sel.delete(k):sel.add(k);b.classList.toggle('on')};$('idx').appendChild(b);
+           const d=document.createElement('div');d.innerHTML='<div class="mut">'+n+'</div><textarea id="t_'+k+'"></textarea>';
+           $('lists').appendChild(d);const t=d.querySelector('textarea');t.value=L(k);
+           t.onchange=()=>localStorage.setItem('list_'+k,t.value);
+          });
+          $('p3').onclick=()=>{days=63;$('p3').className='on';$('p6').className=''};
+          $('p6').onclick=()=>{days=126;$('p6').className='on';$('p3').className=''};
+
+          async function wiki(url,idCol){
+           const h=await (await fetch(url)).text();
+           const doc=new DOMParser().parseFromString(h,'text/html');
+           for(const tb of doc.querySelectorAll('table.wikitable')){
+            const hs=[...tb.querySelectorAll('tr:first-child th')].map(x=>x.textContent.trim().toLowerCase());
+            const c=hs.findIndex(x=>x===idCol||x==='symbol'||x==='ticker');
+            if(c<0)continue;
+            const out=[...tb.querySelectorAll('tr')].slice(1).map(r=>r.children[c]?.textContent.trim().replace('.','-')).filter(Boolean);
+            if(out.length>50)return out;
+           }
+           throw new Error('table not found');
+          }
+          $('upd').onclick=async()=>{
+           $('updst').textContent='מעדכן...';
+           try{
+            const spx=await wiki('https://en.wikipedia.org/wiki/List_of_S%26P_500_companies','symbol');
+            const ndx=await wiki('https://en.wikipedia.org/wiki/Nasdaq-100','ticker');
+            localStorage.setItem('list_SPX',spx.join(','));localStorage.setItem('list_NDX',ndx.join(','));
+            $('t_SPX').value=spx.join(',');$('t_NDX').value=ndx.join(',');
+            $('updst').textContent='עודכן: '+spx.length+' / '+ndx.length;
+           }catch(e){$('updst').textContent='העדכון נכשל - אפשר להזין ידנית'}
+          };
+
+          async function fetchStock(sym){
+           const r=await fetch('https://query1.finance.yahoo.com/v8/finance/chart/'+encodeURIComponent(sym)+'?range=6mo&interval=1d');
+           const j=typeof r.json==='function'?await r.json():r;
+           const res=j.chart.result[0],q=res.indicators.quote[0];
+           const rows=[];res.timestamp.forEach((t,i)=>{if(q.close[i]>0)rows.push({c:q.close[i],v:q.volume[i]||0})});
+           return rows;
+          }
+          function analyze(rows,band,minD,vr,anyv){
+           const w=rows.slice(-days);if(w.length<minD)return null;
+           const avgAll=w.reduce((s,r)=>s+r.v,0)/w.length;
+           for(let s=0;s<=w.length-minD;s++){
+            const base=w[s].c,lo=base*(1-band),hi=base*(1+band),seg=w.slice(s);
+            if(seg.every(r=>r.c>=lo&&r.c<=hi)){
+             const ratio=avgAll?(seg.reduce((a,r)=>a+r.v,0)/seg.length)/avgAll:1;
+             if(!anyv&&ratio>vr)continue;
+             const cs=seg.map(r=>r.c);
+             return{len:seg.length,ratio,range:(Math.max(...cs)-Math.min(...cs))/base*100};
+            }
+           }
+           return null;
+          }
+          function tvUrl(sym){
+           const s=sym.endsWith('.TA')?'TASE:'+sym.slice(0,-3):sym.replace('-','.');
+           return 'https://www.tradingview.com/chart/?symbol='+encodeURIComponent(s);
+          }
+          $('scan').onclick=async()=>{
+           const band=+$('band').value/100,minD=+$('minD').value,vr=+$('vr').value,anyv=$('anyv').checked;
+           const syms=new Map();
+           IDX.forEach(([k])=>{if(sel.has(k))$('t_'+k).value.split(/[\s,]+/).filter(Boolean).forEach(s=>syms.set(s,k))});
+           const list=[...syms.keys()];if(!list.length){$('status').textContent='אין מניות ברשימות';return}
+           const out=[];let done=0,fail=0;
+           $('prog').hidden=false;$('prog').max=list.length;$('res').hidden=true;$('scan').disabled=true;
+           const q=[...list];
+           await Promise.all(Array.from({length:6},async()=>{
+            while(q.length){const s=q.shift();
+             try{const r=analyze(await fetchStock(s),band,minD,vr,anyv);if(r)out.push({s,idx:syms.get(s),...r})}catch(e){fail++}
+             $('prog').value=++done;$('status').textContent='נסרקו '+done+'/'+list.length;}
+           }));
+           $('scan').disabled=false;$('prog').hidden=true;
+           out.sort((a,b)=>b.len-a.len);
+           $('status').textContent='נמצאו '+out.length+' מניות'+(fail?' ('+fail+' נכשלו)':'');
+           const box=$('res');box.innerHTML='';box.hidden=!out.length;
+           out.forEach(o=>{
+            const e=document.createElement('div');e.className='item';
+            e.innerHTML='<div><b></b> <span class="tag"></span></div><div class="tag"></div>';
+            e.querySelector('b').textContent=o.s.replace('.TA','');
+            e.querySelector('.tag').textContent=o.idx;
+            e.lastChild.textContent=o.len+' ימים · טווח '+o.range.toFixed(1)+'% · מחזור ×'+o.ratio.toFixed(2);
+            e.onclick=()=>window.open(tvUrl(o.s),'_blank');
+            box.appendChild(e);
+           });
+          };
+          </script></body></html>
+          EOF_FILE
+      - name: Build
+        run: |
+          npm install
+          npx cap add android
+          npx cap sync android
+          cd android && ./gradlew assembleDebug
+      - uses: actions/upload-artifact@v4
+        with:
+          name: app-apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk

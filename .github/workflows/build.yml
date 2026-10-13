@@ -62,78 +62,127 @@ jobs:
           <div class="card">
            <div class="mut">מדדים</div><div class="row" id="idx"></div>
            <div class="row"><button id="upd">עדכן רשימות מניות (ארה״ב)</button><span id="updst" class="mut"></span></div>
-           <details><summary class="mut">עריכת רשימות מניות (סימול Yahoo, מופרד בפסיקים)</summary>
+           <details><summary class="mut">עריכת רשימות מניות (סימולים מופרדים ברווח, בפסיק או בשורה; לישראל בלי .TA)</summary>
             <div id="lists"></div></details>
            <div class="mut">תקופת סריקה (לפני הסריקה)</div>
            <div class="row"><button id="p3" class="on">3 חודשים</button><button id="p6">חצי שנה</button></div>
            <div class="row"><span>טווח ±</span><input id="band" type="number" value="15"><span>%</span>
             <span>מינ׳ ימים</span><input id="minD" type="number" value="10"></div>
+           <div class="row"><span>חציות מינימליות של המחיר ההתחלתי</span><input id="minX" type="number" value="2" min="0" max="20">
+            <label><input id="short" type="checkbox"> אפשר גם חלון קצר יותר</label></div>
            <div class="row"><span>מחזור עד</span><input id="vr" type="number" value="1.0" step="0.1"><span>× מהממוצע</span>
             <label><input id="anyv" type="checkbox"> ללא סינון מחזור</label></div>
+           <div class="mut">מסננים נוספים (כל אחד ניתן להפעלה או ביטול לפני הסריקה)</div>
+           <div class="row"><label><input id="fRng" type="checkbox" checked> טווח כולל (שיא פחות שפל) עד</label><input id="maxRange" type="number" value="12" min="2" max="40"><span>%</span></div>
+           <div class="row"><label><input id="fTouch" type="checkbox" checked> נגיעות בשני הקצוות, לפחות</label><input id="minT" type="number" value="2" min="1" max="10"><span>בכל קצה · אזור קצה</span><input id="zone" type="number" value="20" min="5" max="40"><span>%</span></div>
+           <div class="row"><label><input id="fLiq" type="checkbox" checked> נזילות: מחיר מעל</label><input id="minPrice" type="number" value="3" min="0" step="0.5"><span>ומחזור יומי ממוצע מעל</span><input id="minVol" type="number" value="100000" min="0" step="10000" style="width:100px"></div>
            <button class="go" id="scan">משוך נתונים וסרוק</button>
            <progress id="prog" value="0" max="1" hidden></progress>
           </div>
           <div id="status" class="mut"></div>
+          <div class="mut"><b style="color:#1fb26a">ירוק</b> = לפני פריצה (או פריצה אפשרית) כלפי מעלה · <b style="color:#e5484d">אדום</b> = כלפי מטה · שחור = דשדוש באמצע הטווח</div>
           <div class="card" id="res" hidden></div>
           <script>
-          const IDX=[["TA35","ת״א 35",".TA"],["TA90","ת״א 90",".TA"],["TA125","ת״א 125",".TA"],["NDX","נאסד״ק 100",""],["SPX","S&P 500",""]];
-          // רשימות ברירת מחדל קצרות לדוגמה - יש להשלים בעריכת הרשימות
-          const DEF={TA35:"TEVA.TA,NICE.TA,ICL.TA,LUMI.TA,POLI.TA,DSCT.TA,MZTF.TA,FIBI.TA,ESLT.TA,NVMI.TA",TA90:"",TA125:"",
-          NDX:"AAPL,MSFT,NVDA,AMZN,GOOGL,META,AVGO,TSLA,COST,NFLX",SPX:"JPM,V,XOM,UNH,PG,HD,KO,PEP,WMT,BAC"};
+          const IDX=[["TA35","ת״א 35"],["TA90","ת״א 90"],["TA125","ת״א 125"],["NDX","נאסד״ק 100"],["SPX","S&P 500"]];
+          // רשימת ת״א 125 להתחלה בלבד - מ-2020 ולא מעודכנת. מומלץ להדביק רשימה עדכנית מאתר הבורסה
+          const DEF={TA35:"",TA90:"",
+          TA125:"NICE POLI LUMI TEVA DSCT ESLT MZTF ICL BEZQ AZRG TSEM ALHE NVMI STRS SAE CGEN ENLT FIBI MVNE FORTY SKBN SPEN ELTR SPNS MTRX BYSD ENRG PZOL AUDC ARPT HLAN HARL AMOT ENOG MLSR MTRN PHOE RIT1 MGOR CLIS DANE PTNR BVC ILCO FIBIH ISCD BIG RMLI AFPR MGIC KEN TASE EQTL OPCE INRM SMT FTAL ALLT ORL CAMT ELCO FOX KMDA ASHG MMHD CEL SLARL ONE MGDL DLEA ELWS ECP ARAD NVLG DIMRI ASPF GZT AUGN BLSR NTML FRSM IDIN ARKO BCNV ISRS MDTR HAML TDRN AZRM AFRE KRUR VCTR ATRY MLTM DELT ELLO ISCN ILX NFTA PLSN DLEKG YHNF ELCRE AVGL ASPR ADGR IES ILDC MTDS VTNA CRSO LVPR HAP FBRT DORL GILT",
+          NDX:"",SPX:""};
           const $=id=>document.getElementById(id);
           let days=63;const sel=new Set(IDX.map(i=>i[0]));
-          const L=k=>localStorage.getItem('list_'+k)??DEF[k];
+          const L=k=>localStorage.getItem('list2_'+k)??DEF[k];
           IDX.forEach(([k,n])=>{
            const b=document.createElement('button');b.textContent=n;b.className='on';
            b.onclick=()=>{sel.has(k)?sel.delete(k):sel.add(k);b.classList.toggle('on')};$('idx').appendChild(b);
            const d=document.createElement('div');d.innerHTML='<div class="mut">'+n+'</div><textarea id="t_'+k+'"></textarea>';
            $('lists').appendChild(d);const t=d.querySelector('textarea');t.value=L(k);
-           t.onchange=()=>localStorage.setItem('list_'+k,t.value);
+           t.onchange=()=>localStorage.setItem('list2_'+k,t.value);
           });
           $('p3').onclick=()=>{days=63;$('p3').className='on';$('p6').className=''};
           $('p6').onclick=()=>{days=126;$('p6').className='on';$('p3').className=''};
 
-          async function wiki(url,idCol){
-           const h=await (await fetch(url)).text();
-           const doc=new DOMParser().parseFromString(h,'text/html');
+          const HD={'User-Agent':'Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Mobile Safari/537.36','Accept':'*/*'};
+          async function get(url){
+           const r=await fetch(url,{headers:HD});
+           if(r.status&&r.status>=400)throw new Error('HTTP '+r.status);
+           return r;
+          }
+          async function wiki(url,col){
+           const doc=new DOMParser().parseFromString(await (await get(url)).text(),'text/html');
            for(const tb of doc.querySelectorAll('table.wikitable')){
-            const hs=[...tb.querySelectorAll('tr:first-child th')].map(x=>x.textContent.trim().toLowerCase());
-            const c=hs.findIndex(x=>x===idCol||x==='symbol'||x==='ticker');
-            if(c<0)continue;
+            const hs=[...tb.querySelectorAll('tr')[0].children].map(x=>x.textContent.trim().toLowerCase());
+            const c=hs.findIndex(x=>x===col);if(c<0)continue;
             const out=[...tb.querySelectorAll('tr')].slice(1).map(r=>r.children[c]?.textContent.trim().replace('.','-')).filter(Boolean);
             if(out.length>50)return out;
            }
-           throw new Error('table not found');
+           throw new Error('wiki table');
           }
-          $('upd').onclick=async()=>{
-           $('updst').textContent='מעדכן...';
+          async function loadSPX(){
            try{
-            const spx=await wiki('https://en.wikipedia.org/wiki/List_of_S%26P_500_companies','symbol');
-            const ndx=await wiki('https://en.wikipedia.org/wiki/Nasdaq-100','ticker');
-            localStorage.setItem('list_SPX',spx.join(','));localStorage.setItem('list_NDX',ndx.join(','));
-            $('t_SPX').value=spx.join(',');$('t_NDX').value=ndx.join(',');
-            $('updst').textContent='עודכן: '+spx.length+' / '+ndx.length;
-           }catch(e){$('updst').textContent='העדכון נכשל - אפשר להזין ידנית'}
-          };
+            const t=await (await get('https://raw.githubusercontent.com/datasets/s-and-p-500-companies/main/data/constituents.csv')).text();
+            const rows=t.trim().split(/\r?\n/).slice(1).map(l=>l.split(',')[0].replace(/"/g,'').trim().replace('.','-')).filter(Boolean);
+            if(rows.length>400)return rows;
+           }catch(e){}
+           return wiki('https://en.wikipedia.org/wiki/List_of_S%26P_500_companies','symbol');
+          }
+          async function loadNDX(){
+           try{
+            const j=await (await get('https://api.nasdaq.com/api/quote/list-type/nasdaq100')).json();
+            const rows=j.data.data.rows.map(r=>r.symbol.replace('.','-'));
+            if(rows.length>50)return rows;
+           }catch(e){}
+           return wiki('https://en.wikipedia.org/wiki/Nasdaq-100','ticker');
+          }
+          async function updateUS(){
+           const msgs=[];
+           for(const [k,f] of [['SPX',loadSPX],['NDX',loadNDX]]){
+            try{const a=await f();localStorage.setItem('list2_'+k,a.join(','));$('t_'+k).value=a.join(',');msgs.push(k+': '+a.length)}
+            catch(e){msgs.push(k+' נכשל ('+e.message+')')}
+           }
+           $('updst').textContent=msgs.join(' · ');
+          }
+          $('upd').onclick=async()=>{$('updst').textContent='מעדכן...';await updateUS()};
 
           async function fetchStock(sym){
-           const r=await fetch('https://query1.finance.yahoo.com/v8/finance/chart/'+encodeURIComponent(sym)+'?range=6mo&interval=1d');
-           const j=typeof r.json==='function'?await r.json():r;
+           let j,err;
+           for(const host of ['query1','query2']){
+            try{
+             const r=await get('https://'+host+'.finance.yahoo.com/v8/finance/chart/'+encodeURIComponent(sym)+'?range=6mo&interval=1d');
+             j=typeof r.json==='function'?await r.json():r;break;
+            }catch(e){err=e}
+           }
+           if(!j)throw err;
            const res=j.chart.result[0],q=res.indicators.quote[0];
            const rows=[];res.timestamp.forEach((t,i)=>{if(q.close[i]>0)rows.push({c:q.close[i],v:q.volume[i]||0})});
            return rows;
           }
-          function analyze(rows,band,minD,vr,anyv){
-           const w=rows.slice(-days);if(w.length<minD)return null;
+          function analyze(rows,P){
+           const w=rows.slice(-days);if(w.length<P.minD)return null;
+           const last=w[w.length-1];
            const avgAll=w.reduce((s,r)=>s+r.v,0)/w.length;
-           for(let s=0;s<=w.length-minD;s++){
-            const base=w[s].c,lo=base*(1-band),hi=base*(1+band),seg=w.slice(s);
-            if(seg.every(r=>r.c>=lo&&r.c<=hi)){
-             const ratio=avgAll?(seg.reduce((a,r)=>a+r.v,0)/seg.length)/avgAll:1;
-             if(!anyv&&ratio>vr)continue;
-             const cs=seg.map(r=>r.c);
-             return{len:seg.length,ratio,range:(Math.max(...cs)-Math.min(...cs))/base*100};
-            }
+           if(P.liq&&(last.c<P.minPrice||avgAll<P.minVol))return null;       // סינון נזילות
+           const lastS=P.allowShort?w.length-P.minD:0;                         // ברירת מחדל: מהיום הראשון של הסריקה
+           for(let s=0;s<=lastS;s++){
+            const seg=w.slice(s),base=seg[0].c,lo=base*(1-P.band),hi=base*(1+P.band);
+            if(!seg.every(r=>r.c>=lo&&r.c<=hi))continue;                       // בתוך הטווח סביב מחיר ההתחלה
+            const mean=seg.reduce((a,r)=>a+r.c,0)/seg.length;
+            const dev=(mean-base)/base;
+            if(Math.abs(dev)>P.band/3)continue;                                // ממוצע קרוב לציר
+            let cross=0,prev=0;
+            for(const r of seg){const sg=Math.sign(r.c-base);if(sg!==0){if(prev!==0&&sg!==prev)cross++;prev=sg}}
+            if(cross<P.minX)continue;                                          // חציות של הציר
+            const cs=seg.map(r=>r.c),mx=Math.max(...cs),mn=Math.min(...cs),R=mx-mn;
+            const rangePct=R/base*100;
+            if(P.rng&&rangePct>P.maxRange)continue;                            // טווח כולל
+            const z=P.zone/100;let up=0,dn=0,inU=false,inD=false;
+            for(const c of cs){const u=R>0&&c>=mx-z*R,d=R>0&&c<=mn+z*R;if(u&&!inU)up++;if(d&&!inD)dn++;inU=u;inD=d}
+            if(P.touch&&(up<P.minT||dn<P.minT))continue;                       // נגיעות בשני הקצוות
+            const avgSeg=seg.reduce((a,r)=>a+r.v,0)/seg.length;
+            const ratio=avgAll?avgSeg/avgAll:1;
+            if(!P.anyv&&ratio>P.vr)continue;
+            const pos=R>0?(last.c-mn)/R:0.5;
+            const dir=pos>=1-z?1:(pos<=z?-1:0);                                // 1 = קרוב לפריצה למעלה, -1 = למטה
+            return{len:seg.length,ratio,cross,range:rangePct,dir};
            }
            return null;
           }
@@ -141,29 +190,47 @@ jobs:
            const s=sym.endsWith('.TA')?'TASE:'+sym.slice(0,-3):sym.replace('-','.');
            return 'https://www.tradingview.com/chart/?symbol='+encodeURIComponent(s);
           }
+          const split=t=>t.split(/[\s,;]+/).map(x=>x.trim()).filter(Boolean);
           $('scan').onclick=async()=>{
-           const band=+$('band').value/100,minD=+$('minD').value,vr=+$('vr').value,anyv=$('anyv').checked;
+           const P={band:+$('band').value/100,minD:+$('minD').value,vr:+$('vr').value,anyv:$('anyv').checked,minX:+$('minX').value,allowShort:$('short').checked,
+            rng:$('fRng').checked,maxRange:+$('maxRange').value,touch:$('fTouch').checked,minT:+$('minT').value,zone:+$('zone').value,
+            liq:$('fLiq').checked,minPrice:+$('minPrice').value,minVol:+$('minVol').value};
+           $('scan').disabled=true;
+           for(const k of ['SPX','NDX']){
+            if(sel.has(k)&&split($('t_'+k).value).length<50){$('status').textContent='מעדכן רשימות ארה״ב...';await updateUS();break}
+           }
            const syms=new Map();
-           IDX.forEach(([k])=>{if(sel.has(k))$('t_'+k).value.split(/[\s,]+/).filter(Boolean).forEach(s=>syms.set(s,k))});
-           const list=[...syms.keys()];if(!list.length){$('status').textContent='אין מניות ברשימות';return}
-           const out=[];let done=0,fail=0;
-           $('prog').hidden=false;$('prog').max=list.length;$('res').hidden=true;$('scan').disabled=true;
+           IDX.forEach(([k])=>{
+            if(!sel.has(k))return;
+            let t=$('t_'+k).value;
+            if(!split(t).length&&k.startsWith('TA'))t=$('t_TA125').value;
+            split(t).forEach(s=>{
+             if(k.startsWith('TA')&&!s.includes('.'))s=s+'.TA';
+             if(!syms.has(s))syms.set(s,k);
+            });
+           });
+           const list=[...syms.keys()];
+           if(!list.length){$('status').textContent='אין מניות ברשימות';$('scan').disabled=false;return}
+           const out=[];let done=0,fail=0,lastErr='';
+           $('prog').hidden=false;$('prog').max=list.length;$('prog').value=0;$('res').hidden=true;
            const q=[...list];
            await Promise.all(Array.from({length:6},async()=>{
             while(q.length){const s=q.shift();
-             try{const r=analyze(await fetchStock(s),band,minD,vr,anyv);if(r)out.push({s,idx:syms.get(s),...r})}catch(e){fail++}
+             try{const r=analyze(await fetchStock(s),P);if(r)out.push({s,idx:syms.get(s),...r})}
+             catch(e){fail++;lastErr=e.message||String(e)}
              $('prog').value=++done;$('status').textContent='נסרקו '+done+'/'+list.length;}
            }));
            $('scan').disabled=false;$('prog').hidden=true;
            out.sort((a,b)=>b.len-a.len);
-           $('status').textContent='נמצאו '+out.length+' מניות'+(fail?' ('+fail+' נכשלו)':'');
+           $('status').textContent='נסרקו '+list.length+' · נמצאו '+out.length+(fail?' · '+fail+' נכשלו ('+lastErr+')':'');
            const box=$('res');box.innerHTML='';box.hidden=!out.length;
            out.forEach(o=>{
             const e=document.createElement('div');e.className='item';
             e.innerHTML='<div><b></b> <span class="tag"></span></div><div class="tag"></div>';
             e.querySelector('b').textContent=o.s.replace('.TA','');
+            if(o.dir>0)e.querySelector('b').style.color='#1fb26a';else if(o.dir<0)e.querySelector('b').style.color='#e5484d';
             e.querySelector('.tag').textContent=o.idx;
-            e.lastChild.textContent=o.len+' ימים · טווח '+o.range.toFixed(1)+'% · מחזור ×'+o.ratio.toFixed(2);
+            e.lastChild.textContent=o.len+' ימים · טווח '+o.range.toFixed(1)+'% · '+o.cross+' חציות · מחזור ×'+o.ratio.toFixed(2);
             e.onclick=()=>window.open(tvUrl(o.s),'_blank');
             box.appendChild(e);
            });
